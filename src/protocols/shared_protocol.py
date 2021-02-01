@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from src.util.ints import uint16, uint8
 from src.util.streamable import streamable, Streamable
 
-protocol_version = "0.0.28"
+protocol_version = "0.0.29"
 
 """
 Handshake when establishing a connection between two servers.

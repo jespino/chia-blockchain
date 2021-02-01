@@ -3,13 +3,12 @@ from setuptools import setup
 
 dependencies = [
     "aiter==0.13.20191203",  # Used for async generator tools
-    "blspy==0.3.5",  # Signature library
-    "chiavdf==0.13.4",  # timelord and vdf verification
-    "chiabip158==0.19",  # bip158-style wallet filters
-    "chiapos==0.12.43",  # proof of space
-    "clvm==0.8.0",
-    "clvm_rs==0.1.2",
-    "clvm_tools==0.3.0",
+    "blspy==0.3.1",  # Signature library
+    "chiavdf==0.14.1b0",  # timelord and vdf verification
+    "chiabip158==0.17",  # bip158-style wallet filters
+    "chiapos==0.12.41",  # proof of space
+    "clvm==0.7",
+    "clvm_tools==0.2.0",
     "aiohttp==3.7.3",  # HTTP server for full node rpc
     "aiosqlite@git+https://github.com/mariano54/aiosqlite.git@47c7b21dd04adb1d41073ee9911a9d4b9c4b370f#egg=aiosqlite",
     # asyncio wrapper for sqlite, to store blocks
