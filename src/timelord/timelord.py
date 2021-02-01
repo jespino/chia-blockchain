@@ -891,7 +891,7 @@ class Timelord:
             log.info(f"Connection reset with VDF client {e}")
 
     async def _manage_discriminant_queue_sanitizer(self):
-        while not self._is_shutdown:
+        while not self._shut_down:
             async with self.lock:
                 while len(self.pending_bluebox_info) > 0 and len(self.free_clients) > 0:
                     info = self.pending_bluebox_info[0]
