@@ -206,7 +206,6 @@ class CCWallet:
             lineage = await self.get_lineage_proof_for_coin(record.coin)
             if lineage is not None:
                 amount = uint64(amount + record.coin.amount)
-
         self.log.info(f"Confirmed balance for cc wallet {self.id()} is {amount}")
         return uint64(amount)
 
@@ -283,7 +282,10 @@ class CCWallet:
         sub_height = response.sub_height
         puzzle: Program = response.puzzle
         r = uncurry_cc(puzzle)
-        header_hash = self.wallet_state_manager.blockchain.sub_block_record(sub_height)
+        try:
+            header_hash = self.wallet_state_manager.blockchain.sub_block_record(sub_height)
+        except Exception:
+            breakpoint()
         block: Optional[
             HeaderBlockRecord
         ] = await self.wallet_state_manager.blockchain.block_store.get_header_block_record(header_hash)
