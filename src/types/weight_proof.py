@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import List, Optional
 
-
+from src.types.classgroup import ClassgroupElement
 from src.types.end_of_slot_bundle import EndOfSubSlotBundle
 from src.types.header_block import HeaderBlock
 from src.types.proof_of_space import ProofOfSpace
@@ -47,12 +47,13 @@ class SubSlotData(Streamable):
 
     # VDF from beginning to end of slot if not infused
     #  from ip to end if infused
-    cc_slot_end: Optional[VDFProof]
-    icc_slot_end: Optional[VDFProof]
+    cc_slot_end: Optional[List[VDFProof]]
+    icc_slot_end: Optional[List[VDFProof]]
 
     # info from finished slots
     cc_slot_end_info: Optional[VDFInfo]
     icc_slot_end_info: Optional[VDFInfo]
+    cc_ip_vdf_info: Optional[VDFInfo]
 
     def is_challenge(self):
         if self.proof_of_space is not None:
