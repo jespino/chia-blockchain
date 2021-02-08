@@ -30,7 +30,7 @@ from src.types.slots import (
     RewardChainSubSlot,
     SubSlotProofs,
 )
-from src.types.vdf import VDFInfo, VDFProof
+from src.types.vdf import VDFInfo, VDFProof, FieldVDF
 from src.util.ints import uint64, uint8, int512, uint32
 from src.types.sub_epoch_summary import SubEpochSummary
 
@@ -737,7 +737,10 @@ class Timelord:
         ip: str,
         reader: asyncio.StreamReader,
         writer: asyncio.StreamWriter,
+        # These data apply only for blueboxes.
         bluebox_iteration: Optional[uint64] = None,
+        challenge_hash: Optional[bytes32] = None,
+        field_vdf: Optional[FieldVDF] = None,
     ):
         disc: int = create_discriminant(challenge, self.constants.DISCRIMINANT_SIZE_BITS)
 
@@ -882,7 +885,12 @@ class Timelord:
                         else:
                             writer.write(b"010")
                             await writer.drain()
-                            response = timelord_protocol.RespondCompactProofOfTime(vdf_info, vdf_proof)
+                            response = timelord_protocol.RespondCompactProofOfTime(
+                                vdf_info,
+                                vdf_proof,
+                                challenge_hash,
+                                field_vdf,
+                            )
                             if self.server is not None:
                                 message = Message("respond_compact_proof_of_time", response)
                                 await self.server.send_to_all([message], NodeType.FULL_NODE)
@@ -906,6 +914,8 @@ class Timelord:
                                 reader,
                                 writer,
                                 info.new_proof_of_time.number_of_iterations,
+                                info.challenge_hash,
+                                info.field_vdf,
                             )
                         )
                     )

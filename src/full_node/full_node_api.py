@@ -869,6 +869,32 @@ class FullNodeAPI:
             return msg
 
     @api_request
+    async def respond_compact_proof_of_time(self, request: timelord_protocol.RespondCompactProofOfTime):
+        if self.full_node.sync_store.get_sync_mode():
+            return None
+        await self.full_node.respond_compact_proof_of_time(request)
+
+    @peer_required
+    @api_request
+    async def new_compact_vdf(self, request: full_node_protocol.NewCompactVDF, peer: ws.WSChiaConnection):
+        if self.full_node.sync_store.get_sync_mode():
+            return None
+        await self.full_node.new_compact_vdf(request, peer)
+
+    @peer_required
+    @api_request
+    async def request_compact_vdf(self, request: full_node_protocol.RequestCompactVDFs, peer: ws.WSChiaConnection):
+        if self.full_node.sync_store.get_sync_mode():
+            return None
+        await self.full_node.request_compact_vdf(request, peer)
+
+    @api_request
+    async def respond_compact_vdf(self, request: full_node_protocol.RespondCompactVDFs):
+        if self.full_node.sync_store.get_sync_mode():
+            return None
+        await self.respond_compact_vdf(request)
+
+    @api_request
     async def request_sub_block_header(self, request: wallet_protocol.RequestSubBlockHeader) -> Optional[Message]:
         header_hash = self.full_node.blockchain.height_to_hash(request.height)
         if header_hash is None:

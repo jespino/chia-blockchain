@@ -9,7 +9,8 @@ from src.types.reward_chain_sub_block import (
 )
 from src.types.sized_bytes import bytes32
 from src.types.sub_epoch_summary import SubEpochSummary
-from src.types.vdf import VDFInfo, VDFProof
+from src.types.vdf import VDFInfo, VDFProof, FieldVDF
+from src.util.cbor_message import cbor_message
 from src.util.ints import uint8, uint64, uint128
 from src.util.streamable import streamable, Streamable
 from src.types.classgroup import ClassgroupElement
@@ -81,6 +82,8 @@ class NewEndOfSubSlotVDF(Streamable):
 class NewProofOfTime:
     new_proof_of_time: VDFInfo
     initial_form: ClassgroupElement
+    challenge_hash: bytes32
+    field_vdf: FieldVDF
 
 
 @dataclass(frozen=True)
@@ -88,3 +91,5 @@ class NewProofOfTime:
 class RespondCompactProofOfTime:
     vdf_info: VDFInfo
     vdf_proof: VDFProof
+    challenge_hash: bytes32
+    field_vdf: FieldVDF

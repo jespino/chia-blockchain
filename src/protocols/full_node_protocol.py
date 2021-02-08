@@ -162,9 +162,15 @@ class RequestMempoolTransactions(Streamable):
 
 
 @dataclass(frozen=True)
-@streamable
-class RequestCompactVDFs(Streamable):
-    height: uint32
+@cbor_message
+class NewCompactVDF:
+    header_hash: bytes32
+
+
+@dataclass(frozen=True)
+@cbor_message
+class RequestCompactVDFs:
+    header_hash: bytes32
 
 
 @dataclass(frozen=True)

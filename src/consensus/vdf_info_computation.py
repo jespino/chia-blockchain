@@ -7,7 +7,7 @@ from src.types.classgroup import ClassgroupElement
 from src.types.end_of_slot_bundle import EndOfSubSlotBundle
 from src.types.sized_bytes import bytes32
 from src.util.ints import uint128, uint64
-
+from src.types.vdf import VDFInfo, FieldVDF
 
 def get_signage_point_vdf_info(
     constants: ConsensusConstants,
@@ -152,3 +152,88 @@ def get_signage_point_vdf_info(
         sp_vdf_iters,
         sp_vdf_iters,
     )
+
+def get_input_form_vdf(
+    constants: ConsensusConstants,
+    sub_blocks: BlockchainInterface,
+    chain: FieldVDF,
+    header_block: HeaderBlock,
+    vdf_info: Optional[VDFInfo],
+) -> Optional[ClassgroupElement]:
+    # For the RC, the vdf input is always the identitiy.
+    if vdf_info is None:
+        return None
+    if chain == FieldVDF.RC_EOS_VDF or chain == FieldVDF.RC_SP_VDF or chain == FieldVDF.RC_IP_VDF:
+        return ClassgroupElement.get_default_element()
+    # Handle ICC.
+    prev_sb = sub_blocks.try_sub_block(header_block.prev_header_hash)        
+    if chain == FieldVDF.ICC_EOS_VDF:
+        if prev_sb is None:
+            return None
+        if prev_sb.deficit < constants.MIN_SUB_BLOCKS_PER_CHALLENGE_BLOCK:
+            return None
+
+        for finished_sub_slot_n, sub_slot in enumerate(header_block.finished_sub_slots):
+            if (
+                sub_slot.infused_challenge_chain.infused_challenge_chain_end_of_slot_vdf is not None
+                and vdf_info == sub_slot.infused_challenge_chain.infused_challenge_chain_end_of_slot_vdf
+            ):
+                if finished_sub_slot_n == 0:
+                    if prev_sb.is_challenge_sub_block(constants):
+                        return ClassgroupElement.get_default_element()
+                    else:
+                        return prev_sb.infused_challenge_vdf_output
+                else:
+                    return ClassgroupElement.get_default_element()
+    if chain == FieldVDF.ICC_IP_VDF:
+        if prev_sb is None:
+            return None
+        if (
+            header_block.reward_chain_sub_block.infused_challenge_chain_ip_vdf is not None
+            and vdf_info == header_block.reward_chain_sub_block.infused_challenge_chain_ip_vdf
+        ):
+            if len(header_block.finished_sub_slots) > 0:
+                return ClassgroupElement.get_default_element()
+            else:
+                if prev_sb.is_challenge_sub_block(constants):
+                    return ClassgroupElement.get_default_element()
+                else:
+                    return prev_sb.infused_challenge_vdf_output
+    # Handle CC.
+    if chain == FieldVDF.CC_SP_VDF:
+        record = sub_blocks.try_sub_block(header_block.header_hash)
+        if record is None:
+            return None
+        if not (
+            header_block.reward_chain_sub_block.challenge_chain_sp_vdf is not None
+            and vdf_info == header_block.reward_chain_sub_block.challenge_chain_sp_vdf
+        ):
+            return None
+        _, _, vdf_input, _, _, _ = get_signage_point_vdf_info(
+            constants,
+            header_block.finished_sub_slots,
+            is_overflow_sub_block(constants, header_block.reward_chain_sub_block.signage_point_index),
+            prev_sb,
+            sub_blocks,
+            record.sp_total_iters(constants),
+            record.sp_iters(constants),
+        )
+        return vdf_input
+    if chain == FieldVDF.CC_IP_VDF:
+        if prev_sb is None:
+            return ClassgroupElement.get_default_element()
+        if len(header_block.finished_sub_slots) > 0:
+            return ClassgroupElement.get_default_element()
+        else:
+            return prev_sb.challenge_vdf_output
+    if chain == FieldVDF.CC_EOS_VDF:
+        for finished_sub_slot_n, sub_slot in enumerate(header_block.finished_sub_slots):
+            if (
+                sub_slot.challenge_chain.challenge_chain_end_of_slot_vdf is not None
+                and vdf_info == sub_slot.challenge_chain.challenge_chain_end_of_slot_vdf
+            ):
+                if finished_sub_slot_n == 0:
+                    return prev_sb.challenge_vdf_output
+                else:
+                    return ClassgroupElement.get_default_element()
+    return None

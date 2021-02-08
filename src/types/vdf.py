@@ -11,6 +11,7 @@ from chiavdf import verify_n_wesolowski
 from src.util.ints import uint8, uint64
 from src.util.streamable import Streamable, streamable
 from src.consensus.constants import ConsensusConstants
+from enum import Enum
 
 log = logging.getLogger(__name__)
 
@@ -84,3 +85,14 @@ class VDFProof(Streamable):
             constants.DISCRIMINANT_SIZE_BITS,
             self.witness_type,
         )
+
+# Stores, for a given VDF, the field that uses it. 
+class FieldVDF(Enum):
+    CC_EOS_VDF = 1
+    RC_EOS_VDF = 2
+    ICC_EOS_VDF = 3
+    CC_SP_VDF = 4
+    RC_SP_VDF = 5
+    CC_IP_VDF = 6
+    ICC_IP_VDF = 7
+    RC_IP_VDF = 8

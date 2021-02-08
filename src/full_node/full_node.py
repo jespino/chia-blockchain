@@ -22,6 +22,7 @@ from src.consensus.make_sub_epoch_summary import next_sub_epoch_summary
 from src.consensus.multiprocess_validation import PreValidationResult
 from src.consensus.pot_iterations import is_overflow_sub_block, calculate_sp_iters
 from src.consensus.sub_block_record import SubBlockRecord
+from src.consensus.vdf_info_computation import get_input_form_vdf
 from src.full_node.block_store import BlockStore
 from src.full_node.coin_store import CoinStore
 from src.full_node.full_node_store import FullNodeStore
@@ -1276,3 +1277,193 @@ class FullNode:
                     f"{request.end_of_slot_bundle.challenge_chain.challenge_chain_end_of_slot_vdf.challenge}"
                 )
         return None, False
+
+    async def respond_compact_proof_of_time(self, request: timelord_protocol.RespondCompactProofOfTime):
+        header_block = self.blockchain.get_header_block(request.challenge_hash)
+        if header_block is None:
+            self.log.warning(f"Bluebox sent invalid header hash: {request.challenge_hash}.")
+            return
+        if header_block.is_compact():
+            return
+        input_form = get_input_form_vdf(
+            self.constants, self.blockchain, request.field_vdf, header_block, request.vdf_info
+        )
+        if input_form is None:
+            self.log.warning(f"Can't retrieve input form for bluebox sent header hash: {request.challenge_hash}.")
+            return
+        info = request.vdf_info
+        proof = request.vdf_proof
+        if proof.witness_type != 0:
+            self.log.info(f"Bluebox sent non compact proof of time.")
+            return
+        if not proof.is_valid(self.constants, input_form, info):
+            self.log.info(f"Bluebox sent invalid proof of time, header hash: {request.challenge_hash}.")
+            return
+
+        new_header_block = None
+        if request.field_vdf == FieldVDF.CC_EOS_VDF:
+            for index, sub_slot in enumerate(header_block.finished_sub_slots):
+                if sub_slot.challenge_chain.challenge_chain_end_of_slot_vdf == info:
+                    new_proofs = dataclass.replace(sub_slot.proofs, challenge_chain_slot_proof=proof)
+                    new_subslot = dataclass.replace(sub_slot, proofs=new_proofs)
+                    new_finished_subslots = header_block.finished_sub_slots
+                    new_finished_subslots[index] = new_subslot
+                    new_header_block = dataclass.replace(header_block, finished_sub_slots=new_finished_subslots)
+                    break
+        if request.field_vdf == FieldVDF.RC_EOS_VDF:
+            for index, sub_slot in enumerate(header_block.finished_sub_slots):
+                if sub_slot.reward_chain.end_of_slot_vdf == info:
+                    new_proofs = dataclass.replace(sub_slot.proofs, reward_chain_slot_proof=proof)
+                    new_subslot = dataclass.replace(sub_slot, proofs=new_proofs)
+                    new_finished_subslots = header_block.finished_sub_slots
+                    new_finished_subslots[index] = new_subslot
+                    new_header_block = dataclass.replace(header_block, finished_sub_slots=new_finished_subslots)
+                    break
+        if request.field_vdf == FieldVDF.ICC_EOS_VDF:
+            for index, sub_slot in enumerate(header_block.finished_sub_slots):
+                if sub_slot.infused_challenge_chain.infused_challenge_chain_end_of_slot_vdf == info:
+                    new_proofs = dataclass.replace(sub_slot.proofs, infused_challenge_chain_slot_proof=proof)
+                    new_subslot = dataclass.replace(sub_slot, proofs=new_proofs)
+                    new_finished_subslots = header_block.finished_sub_slots
+                    new_finished_subslots[index] = new_subslot
+                    new_header_block = dataclass.replace(header_block, finished_sub_slots=new_finished_subslots)
+                    break
+        if request.field_vdf == FieldVDF.CC_SP_VDF:
+            assert info == header_block.reward_chain_sub_block.challenge_chain_sp_vdf
+            new_header_block = dataclass.replace(header_block, challenge_chain_sp_proof=proof)
+        if request.field_vdf == FieldVDF.RC_SP_VDF:
+            assert info == header_block.reward_chain_sub_block.reward_chain_sp_vdf
+            new_header_block = dataclass.replace(header_block, reward_chain_sp_proof=proof)
+        if request.field_vdf == FieldVDF.CC_IP_VDF:
+            assert info == header_block.reward_chain_sub_block.challenge_chain_ip_vdf
+            new_header_block = dataclass.replace(header_block, challenge_chain_ip_proof=proof)
+        if request.field_vdf == FieldVDF.ICC_IP_VDF:
+            assert info == header_block.reward_chain_sub_block.infused_challenge_chain_ip_vdf
+            new_header_block = dataclass.replace(header_block, infused_challenge_chain_ip_proof=proof)
+        if request.field_vdf == FieldVDF.RC_IP_VDF:
+            assert info == header_block.reward_chain_sub_block.reward_chain_ip_vdf
+            new_header_block = dataclass.replace(header_block, reward_chain_ip_proof=proof)
+        if new_header_block is None:
+            self.log.warning(f"Can't use compact pot to modify block header. hh: {request.challenge_hash}")
+            return
+        # TODO: Store 'new_header_block'!
+        if new_header_block.is_compact():
+            msg = Message("new_compact_vdf", full_node_protocol.NewCompactVDF(request.challenge_hash))
+            await self.server.send_to_all([msg], NodeType.FULL_NODE)
+
+    async def new_compact_vdf(self, request: full_node_protocol.NewCompactVDF, peer: ws.WSChiaConnection):
+        header_block = self.blockchain.get_header_block(request.header_hash)
+        if header_block.is_compact():
+            return
+        msg = Message("request_compact_vdf", full_node_protocol.RequestCompactVDFs(request.header_hash))
+        await peer.send_message(msg)
+        
+    async def request_compact_vdf(self, request: full_node_protocol.RequestCompactVDFs, peer: ws.WSChiaConnection):
+        header_block = self.blockchain.get_header_block(request.header_hash)
+        if not header_block.is_compact():
+            return
+        compact_info = full_node_protocol.RespondCompactVDFs(
+            header_block.sub_block_height,
+            header_block.header_hash,
+            header_block.finished_sub_slots.proofs,
+            header_block.challenge_chain_sp_proof,
+            header_block.reward_chain_sp_proof,
+            header_block.challenge_chain_ip_proof,
+            header_block.infused_challenge_chain_ip_proof,
+            header_block.reward_chain_ip_proof,
+        )
+        msg = Message("respond_compact_vdf", compact_info)
+        await peer.send_message(msg)
+
+    async def respond_compact_vdf(self, request: full_node_protocol.RespondCompactVDFs):
+        header_block = self.blockchain.get_header_block(request.header_hash)
+        if header_block.is_compact():
+            return
+        # Validate end of subslot proofs.
+        if len(request.end_of_slot_proofs) != len(header_block.finished_sub_slots):
+            return
+        for i, sub_slot in enumerate(header_block.finished_sub_slots):
+            info = sub_slot.challenge_chain.challenge_chain_end_of_slot_vdf
+            proof = request.end_of_slot_proofs[i].challenge_chain_slot_proof
+            form = get_input_form_vdf(self.constants, self.blockchain, FieldVDF.CC_EOS_VDF, header_block, info)
+            if form is None or not proof.is_valid(self.constants, form, info) or proof.witness_type > 0:
+                self.log.warning("Full node sent invalid CC EOS compact proof.")
+                return
+            info = sub_slot.reward_chain.end_of_slot_vdf
+            proof = request.end_of_slot_proofs[i].reward_chain_slot_proof
+            form = get_input_form_vdf(self.constants, self.blockchain, FieldVDF.RC_EOS_VDF, header_block, info)
+            if form is None or not proof.is_valid(self.constants, form, info) or proof.witness_type > 0:
+                self.log.warning("Full node sent invalid RC EOS compact proof.")
+                return
+            info = sub_slot.infused_challenge_chain.infused_challenge_chain_end_of_slot_vdf
+            if info is not None:
+                proof = request.end_of_slot_proofs[i].infused_challenge_chain_slot_proof
+                if proof is None:
+                    self.log.warning("Full node sent invalid ICC EOS compact proof.")
+                    return
+                form = get_input_form_vdf(self.constants, self.blockchain, FieldVDF.ICC_EOS_VDF, header_block, info)
+                if form is None or not proof.is_valid(self.constants, form, info) or proof.witness_type > 0:
+                    self.log.warning("Full node sent invalid ICC EOS compact proof.")
+                    return
+        # Validate signage point proofs.
+        if header_block.reward_chain_sub_block.challenge_chain_sp_vdf is not None:
+            info = header_block.reward_chain_sub_block.challenge_chain_sp_vdf
+            proof = request.cc_sp_proof
+            if proof is None or proof.witness_type > 0:
+                self.log.warning("Full node sent invalid CC SP proof.")
+                return
+            form = get_input_form_vdf(self.constants, self.blockchain, FieldVDF.CC_SP_VDF, header_block, info)
+            if form is None or not proof.is_valid(self.constants, form, info):
+                self.log.warning("Full node sent invalid CC SP compact proof.")
+                return
+        if header_block.reward_chain_sub_block.reward_chain_sp_vdf is not None:
+            info = header_block.reward_chain_sub_block.reward_chain_sp_vdf
+            proof = request.rc_sp_proof
+            if proof is None or proof.witness_type > 0:
+                self.log.warning("Full node sent invalid RC SP proof.")
+                return
+            form = get_input_form_vdf(self.constants, self.blockchain, FieldVDF.RC_SP_VDF, header_block, info)
+            if form is None or not proof.is_valid(self.constants, form, info):
+                self.log.warning("Full node sent invalid RC SP compact proof.")
+                return
+        # Validate infusion point proofs.
+        info = header_block.reward_chain_sub_block.challenge_chain_ip_vdf
+        proof = request.cc_ip_proof
+        form = get_input_form_vdf(self.constants, self.blockchain, FieldVDF.CC_IP_VDF, header_block, info)
+        if form is None or not proof.is_valid(self.constants, form, info) or proof.witness_type > 0:
+            self.log.warning("Full node sent invalid CC IP compact proof.")
+            return
+        info = header_block.reward_chain_sub_block.reward_chain_ip_vdf
+        proof = request.rc_ip_proof
+        form = get_input_form_vdf(self.constants, self.blockchain, FieldVDF.RC_IP_VDF, header_block, info)
+        if form is None or not proof.is_valid(self.constants, form, info) or proof.witness_type > 0:
+            self.log.warning("Full node sent invalid RC IP compact proof.")
+            return
+        if header_block.reward_chain_sub_block.infused_challenge_chain_ip_vdf is not None:
+            info = header_block.reward_chain_sub_block.infused_challenge_chain_ip_vdf
+            proof = request.icc_ip_proof
+            if proof is None or proof.witness_type > 0:
+                self.log.warning("Full node sent invalid ICC IP proof.")
+                return
+            form = get_input_form_vdf(self.constants, self.blockchain, FieldVDF.ICC_IP_VDF, header_block, info)
+            if form is None or not proof.is_valid(self.constants, form, info):
+                self.log.warning("Full node sent invalid ICC IP proof.")
+                return
+
+        new_finished_subslots = dataclass.replace(
+            header_block.finished_sub_slots,
+            proofs=request.end_of_slot_proofs
+        )
+        new_header_block = dataclass.replace(
+            header_block,
+            finished_sub_slots=new_finished_subslots,
+            challenge_chain_sp_proof=request.cc_sp_proof,
+            reward_chain_sp_proof=request.rc_sp_proof,
+            challenge_chain_ip_proof=request.cc_ip_proof,
+            infused_challenge_chain_ip_proof=request.icc_ip_proof,
+            reward_chain_ip_proof=request.rc_ip_proof,
+        )
+        # TODO: Store 'new_header_block'!
+        if new_header_block.is_compact():
+            msg = Message("new_compact_vdf", full_node_protocol.NewCompactVDF(request.challenge_hash))
+            await self.server.send_to_all([msg], NodeType.FULL_NODE)

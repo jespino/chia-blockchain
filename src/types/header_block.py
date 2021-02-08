@@ -59,3 +59,29 @@ class HeaderBlock(Streamable):
     @property
     def first_in_sub_slot(self) -> bool:
         return self.finished_sub_slots is not None and len(self.finished_sub_slots) > 0
+
+    def is_compact(self) -> bool:
+        if self.challenge_chain_sp_proof is not None and self.challenge_chain_sp_proof.witness_type != 0:
+            return False
+        if self.challenge_chain_ip_proof.witness_type != 0:
+            return False
+        if self.reward_chain_sp_proof is not None and self.reward_chain_sp_proof.witness_type != 0:
+            return False
+        if self.reward_chain_ip_proof.witness_type != 0:
+            return False
+        if (
+            self.infused_challenge_chain_ip_proof is not None
+            and self.infused_challenge_chain_ip_proof.witness_type != 0
+        ):
+            return False
+        for subslot in self.finished_sub_slots:
+            if subslot.proofs.challenge_chain_slot_proof.witness_type != 0:
+                return False
+            if (
+                subslot.proofs.infused_challenge_chain_slot_proof is not None
+                and subslot.proofs.infused_challenge_chain_slot_proof.witness_type != 0
+            ):
+                return False
+            if subslot.proofs.reward_chain_slot_proof.witness_type != 0:
+                return False
+        return True
