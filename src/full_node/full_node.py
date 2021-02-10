@@ -1467,3 +1467,159 @@ class FullNode:
         if new_header_block.is_compact():
             msg = Message("new_compact_vdf", full_node_protocol.NewCompactVDF(request.challenge_hash))
             await self.server.send_to_all([msg], NodeType.FULL_NODE)
+
+    async def broadcast_uncompact_blocks(self, uncompact_interval_scan, target_uncompact_blocks):
+        while not self._shut_down:
+            while self.sync_store.get_sync_mode():
+                if self._shut_down:
+                    return
+                await asyncio.sleep(30)
+        
+            broadcast_list: List[List[timelord_protocol.NewProofOfTime]] = []
+            min_height = 1
+            new_min_height = None
+            max_height = self.blockchain.peak_height
+            got_uncompact = False
+            self.log.info("Scanning the blockchain for uncompact blocks.")
+            for h in range(min_height, max_height, 100):
+                broadcast_list = []
+                stop_height = min(h + 100, max_height)
+                headers = self.blockchain.get_header_blocks_in_range(min_height, stop_height)
+                # Got 10 times the target header count, sampling the target headers should contain
+                # enough randomness to split the work between blueboxes.
+                if len(broadcast_list) > target_uncompact_blocks * 10:
+                    break
+                for header in headers:
+                    if not header.is_compact():
+                        header_pot_list = []
+                        for sub_slot in header.finished_sub_slots:
+                            if sub_slot.proofs.challenge_chain_slot_proof.witness_type > 0:
+                                info = sub_slot.challenge_chain.challenge_chain_end_of_slot_vdf
+                                header_pot_list.append(
+                                    timelord_protocol.NewProofOfTime(
+                                        info,
+                                        get_input_form_vdf(
+                                            self.constants, self.blockchain, FieldVDF.CC_EOS_VDF, header, info
+                                        ),
+                                        header.challenge_hash,
+                                        FieldVDF.CC_EOS_VDF,
+                                    )
+                                )
+                            if (
+                                sub_slot.proofs.infused_challenge_chain_slot_proof is not None
+                                and sub_slot.proofs.infused_challenge_chain_slot_proof.witness_type > 0
+                            ):
+                                info = sub_slot.infused_challenge_chain.infused_challenge_chain_end_of_slot_vdf
+                                header_pot_list.append(
+                                    timelord_protocol.NewProofOfTime(
+                                        info,
+                                        get_input_form_vdf(
+                                            self.constants, self.blockchain, FieldVDF.ICC_EOS_VDF, header, info
+                                        ),
+                                        header.challenge_hash,
+                                        FieldVDF.ICC_EOS_VDF,
+                                    )
+                                )
+                            if sub_slot.proofs.reward_chain_slot_proof.witness_type > 0:
+                                info = sub_slot.reward_chain.end_of_slot_vdf
+                                header_pot_list.append(
+                                    timelord_protocol.NewProofOfTime(
+                                        info,
+                                        get_input_form_vdf(
+                                            self.constants, self.blockchain, FieldVDF.RC_EOS_VDF, header, info
+                                        ),
+                                        header.challenge_hash,
+                                        FieldVDF.RC_EOS_VDF,
+                                    )
+                                )
+                        if (
+                            sub_slot.challenge_chain_sp_proof is not None
+                            and sub_slot.challenge_chain_sp_proof.witness_type > 0
+                        ):
+                            info = header.reward_chain.challenge_chain_sp_vdf
+                            header_pot_list.append(
+                                timelord_protocol.NewProofOfTime(
+                                    info,
+                                    get_input_form_vdf(
+                                        self.constants, self.blockchain, FieldVDF.CC_SP_VDF, header, info
+                                    ),
+                                    header.challenge_hash,
+                                    FieldVDF.CC_SP_VDF,
+                                )
+                            )
+
+                        if sub_slot.challenge_chain_ip_proof.witness_type > 0:
+                            info = header.reward_chain.challenge_chain_ip_vdf
+                            header_pot_list.append(
+                                timelord_protocol.NewProofOfTime(
+                                    info,
+                                    get_input_form_vdf(
+                                        self.constants, self.blockchain, FieldVDF.CC_IP_VDF, header, info
+                                    ),
+                                    header.challenge_hash,
+                                    FieldVDF.CC_IP_VDF,
+                                )
+                            )
+                        
+                        if (
+                            sub_slot.reward_chain_sp_proof is not None
+                            and sub_slot.reward_chain_sp_proof.witness_type > 0
+                        ):
+                            info = header.reward_chain.reward_chain_sp_vdf
+                            header_pot_list.append(
+                                timelord_protocol.NewProofOfTime(
+                                    info,
+                                    get_input_form_vdf(
+                                        self.constants, self.blockchain, FieldVDF.RC_SP_VDF, header, info
+                                    ),
+                                    header.challenge_hash,
+                                    FieldVDF.RC_SP_VDF,
+                                )
+                            )
+                        if sub_slot.reward_chain_ip_proof.witness_type > 0:
+                            info = header.reward_chain.reward_chain_ip_vdf
+                            header_pot_list.append(
+                                timelord_protocol.NewProofOfTime(
+                                    info,
+                                    get_input_form_vdf(
+                                        self.constants, self.blockchain, FieldVDF.RC_IP_VDF, header, info
+                                    ),
+                                    header.challenge_hash,
+                                    FieldVDF.RC_IP_VDF,
+                                )
+                            )
+                        if (
+                            sub_slot.infused_challenge_chain_ip_proof is not None
+                            and sub_slot.infused_challenge_chain_ip_proof.witness_type > 0
+                        ):
+                            info = header.reward_chain.infused_challenge_chain_ip_vdf
+                            header_pot_list.append(
+                                timelord_protocol.NewProofOfTime(
+                                    info,
+                                    get_input_form_vdf(
+                                        self.constants, self.blockchain, FieldVDF.ICC_IP_VDF, header, info
+                                    ),
+                                    header.challenge_hash,
+                                    FieldVDF.ICC_IP_VDF,
+                                )
+                            )
+                        assert header_pot_list != []
+                        broadcast_list.append(header_pot_list)
+                if not got_uncompact:
+                    got_uncompact = True
+                    if h <= max(1, max_height - 500):
+                        new_min_height = h
+
+            if new_min_height is None:
+                new_min_height = max(1, max_height - 200)
+            min_height = new_min_height
+            if len(broadcast_list) > target_uncompact_blocks:
+                random.shuffle(broadcast_list)
+                broadcast_list = broadcast_list[:target_uncompact_blocks]
+            if self.sync_store.get_sync_mode():
+                continue
+            if self.server is not None:
+                for new_pot in broadcast_list:
+                    msg = Message("new_proof_of_time", new_pot)
+                    await self.server.send_to_all([msg], NodeType.TIMELORD)
+            await asyncio.sleep(uncompact_interval)
