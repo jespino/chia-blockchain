@@ -1611,7 +1611,7 @@ class FullNode:
                         new_min_height = h
 
             if new_min_height is None:
-                new_min_height = max(1, max_height - 200)
+                new_min_height = max(1, max_height - 500)
             min_height = new_min_height
             if len(broadcast_list) > target_uncompact_blocks:
                 random.shuffle(broadcast_list)
@@ -1619,7 +1619,8 @@ class FullNode:
             if self.sync_store.get_sync_mode():
                 continue
             if self.server is not None:
-                for new_pot in broadcast_list:
-                    msg = Message("new_proof_of_time", new_pot)
-                    await self.server.send_to_all([msg], NodeType.TIMELORD)
+                for new_pot_list in broadcast_list:
+                    for new_pot in new_pot_list:
+                        msg = Message("new_proof_of_time", new_pot)
+                        await self.server.send_to_all([msg], NodeType.TIMELORD)
             await asyncio.sleep(uncompact_interval)
