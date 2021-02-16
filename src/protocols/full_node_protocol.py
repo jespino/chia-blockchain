@@ -7,7 +7,7 @@ from src.types.slots import SubSlotProofs
 from src.types.spend_bundle import SpendBundle
 from src.types.unfinished_block import UnfinishedBlock
 from src.types.sized_bytes import bytes32
-from src.types.vdf import VDFInfo, VDFProof
+from src.types.vdf import VDFInfo, VDFProof, FieldVDF
 from src.types.weight_proof import WeightProof
 from src.util.ints import uint8, uint32, uint64, uint128
 from src.types.peer_info import TimestampedPeerInfo
@@ -163,21 +163,27 @@ class RequestMempoolTransactions(Streamable):
 
 @dataclass(frozen=True)
 @streamable
-class RequestCompactVDFs(Streamable):
+class NewCompactVDF(Streamable):
     height: uint32
+    field_vdf: FieldVDF
+    vdf_info: VDFInfo
 
 
 @dataclass(frozen=True)
 @streamable
-class RespondCompactVDFs(Streamable):
+class RequestCompactVDF(Streamable):
     height: uint32
-    header_hash: bytes32
-    end_of_slot_proofs: List[SubSlotProofs]  # List of challenge eos vdf and reward eos vdf
-    cc_sp_proof: Optional[VDFProof]  # If not first sp
-    rc_sp_proof: Optional[VDFProof]  # If not first sp
-    cc_ip_proof: VDFProof
-    icc_ip_proof: Optional[VDFProof]
-    rc_ip_proof: VDFProof
+    field_vdf: FieldVDF
+    vdf_info: VDFInfo
+
+
+@dataclass(frozen=True)
+@streamable
+class RespondCompactVDF(Streamable):
+    height: uint32
+    field_vdf: FieldVDF
+    vdf_info: VDFInfo
+    vdf_proof: VDFProof
 
 
 @dataclass(frozen=True)
