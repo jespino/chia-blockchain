@@ -3,7 +3,6 @@ from typing import List, Optional
 
 from src.types.end_of_slot_bundle import EndOfSubSlotBundle
 from src.types.full_block import FullBlock
-from src.types.slots import SubSlotProofs
 from src.types.spend_bundle import SpendBundle
 from src.types.unfinished_block import UnfinishedBlock
 from src.types.sized_bytes import bytes32

@@ -10,7 +10,7 @@ from src.types.reward_chain_block import (
 from src.types.sized_bytes import bytes32
 from src.types.sub_epoch_summary import SubEpochSummary
 from src.types.vdf import VDFInfo, VDFProof, FieldVDF
-from src.util.ints import uint8, uint64, uint128
+from src.util.ints import uint8, uint32, uint64, uint128
 from src.util.streamable import streamable, Streamable
 
 """
@@ -75,7 +75,7 @@ class NewEndOfSubSlotVDF(Streamable):
 
 
 @dataclass(frozen=True)
-@cbor_message
+@streamable
 class NewProofOfTime:
     new_proof_of_time: VDFInfo
     height: uint32
@@ -83,7 +83,7 @@ class NewProofOfTime:
 
 
 @dataclass(frozen=True)
-@cbor_message
+@streamable
 class RespondCompactProofOfTime:
     vdf_info: VDFInfo
     vdf_proof: VDFProof
