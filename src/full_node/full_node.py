@@ -1402,9 +1402,8 @@ class FullNode:
             return
         await self._replace_proof(request.vdf_info, request.vdf_proof, request.height, request.field_vdf)
         msg = make_msg(
-            ProtocolMessageTypes.new_compact_vdf, full_node_protocol.NewCompactVDF(
-                request.height, request.field_vdf, request.vdf_info
-            )
+            ProtocolMessageTypes.new_compact_vdf,
+            full_node_protocol.NewCompactVDF(request.height, request.field_vdf, request.vdf_info),
         )
         if self.server is not None:
             await self.server.send_to_all([msg], NodeType.FULL_NODE)
@@ -1415,9 +1414,8 @@ class FullNode:
             return
         if await self._needs_compact_proof(request.vdf_info, header_block, request.field_vdf):
             msg = make_msg(
-                ProtocolMessageTypes.request_compact_vdf, full_node_protocol.RequestCompactVDF(
-                    request.height, request.field_vdf, request.vdf_info
-                )
+                ProtocolMessageTypes.request_compact_vdf,
+                full_node_protocol.RequestCompactVDF(request.height, request.field_vdf, request.vdf_info),
             )
             await peer.send_message(msg)
 
@@ -1469,9 +1467,8 @@ class FullNode:
             return
         await self._replace_proof(request.vdf_info, request.vdf_proof, request.height, request.field_vdf)
         msg = make_msg(
-            ProtocolMessageTypes.new_compact_vdf, full_node_protocol.NewCompactVDF(
-                request.height, request.field_vdf, request.vdf_info
-            )
+            ProtocolMessageTypes.new_compact_vdf,
+            full_node_protocol.NewCompactVDF(request.height, request.field_vdf, request.vdf_info),
         )
         if self.server is not None:
             await self.server.send_to_all_except([msg], NodeType.FULL_NODE, peer.peer_node_id)
@@ -1513,12 +1510,9 @@ class FullNode:
                                     FieldVDF.CC_EOS_VDF,
                                 )
                             )
-                        if (
-                            sub_slot.proofs.infused_challenge_chain_slot_proof is not None
-                            and (
-                                sub_slot.proofs.infused_challenge_chain_slot_proof.witness_type > 0
-                                or not sub_slot.proofs.infused_challenge_chain_slot_proof.normalized_to_identity
-                            )
+                        if sub_slot.proofs.infused_challenge_chain_slot_proof is not None and (
+                            sub_slot.proofs.infused_challenge_chain_slot_proof.witness_type > 0
+                            or not sub_slot.proofs.infused_challenge_chain_slot_proof.normalized_to_identity
                         ):
                             broadcast_list.append(
                                 timelord_protocol.NewProofOfTime(
@@ -1527,12 +1521,9 @@ class FullNode:
                                     FieldVDF.ICC_EOS_VDF,
                                 )
                             )
-                    if (
-                        header.challenge_chain_sp_proof is not None
-                        and (
-                            header.challenge_chain_sp_proof.witness_type > 0
-                            or not header.challenge_chain_sp_proof.normalized_to_identity
-                        )
+                    if header.challenge_chain_sp_proof is not None and (
+                        header.challenge_chain_sp_proof.witness_type > 0
+                        or not header.challenge_chain_sp_proof.normalized_to_identity
                     ):
                         broadcast_list.append(
                             timelord_protocol.NewProofOfTime(
