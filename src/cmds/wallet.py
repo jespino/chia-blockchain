@@ -81,12 +81,12 @@ def make_parser(parser):
     parser.print_help = lambda self=parser: help_message()
 
 
-def print_transaction(tx: TransactionRecord, verbose: bool):
+def print_transaction(tx: TransactionRecord, verbose: bool, prefix):
     if verbose:
         print(tx)
     else:
         chia_amount = Decimal(int(tx.amount)) / units["chia"]
-        to_address = encode_puzzle_hash(tx.to_puzzle_hash)
+        to_address = encode_puzzle_hash(tx.to_puzzle_hash, prefix)
         print(f"Transaction {tx.name}")
         print(f"Status: {'Confirmed' if tx.confirmed else ('In mempool' if tx.is_in_mempool() else 'Pending')}")
         print(f"Amount: {chia_amount} TXCH")
@@ -107,7 +107,9 @@ async def get_transaction(args, wallet_client, fingerprint: int):
     else:
         transaction_id = hexstr_to_bytes(args.tx_id)
     tx: TransactionRecord = await wallet_client.get_transaction(wallet_id, transaction_id=transaction_id)
-    print_transaction(tx, verbose=(args.verbose > 0))
+    selected = wallet_client.service.config["selected_network"]
+    prefix = wallet_client.service.config["network_overrides"]["config"][selected]["address_prefix"]
+    print_transaction(tx, verbose=(args.verbose > 0), prefix=prefix)
 
 
 async def get_transactions(args, wallet_client, fingerprint: int):
@@ -117,11 +119,13 @@ async def get_transactions(args, wallet_client, fingerprint: int):
     else:
         wallet_id = args.id
     txs: List[TransactionRecord] = await wallet_client.get_transactions(wallet_id)
+    selected = wallet_client.service.config["selected_network"]
+    prefix = wallet_client.service.config["network_overrides"]["config"][selected]["address_prefix"]
     if len(txs) == 0:
         print("There are no transactions to this address")
     for i in range(0, len(txs), 5):
         for j in range(0, 5):
-            print_transaction(txs[i + j], verbose=(args.verbose > 0))
+            print_transaction(txs[i + j], verbose=(args.verbose > 0), prefix=prefix)
         print("Press q to quit, or c to continue")
         while True:
             entered_key = sys.stdin.read(1)
