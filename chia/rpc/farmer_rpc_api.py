@@ -16,6 +16,7 @@ class FarmerRpcApi:
             "/get_signage_points": self.get_signage_points,
             "/get_reward_targets": self.get_reward_targets,
             "/set_reward_targets": self.set_reward_targets,
+            "/get_harvesters_summary": self.get_harvesters_summary,
         }
 
     async def _state_changed(self, change: str, change_data: Dict) -> List[WsRpcMessage]:
@@ -93,3 +94,6 @@ class FarmerRpcApi:
 
         self.service.set_reward_targets(farmer_target, pool_target)
         return {}
+
+    async def get_harvesters_summary(self) -> Dict:
+        return self.service.get_harvesters_summary()

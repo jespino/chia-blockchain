@@ -78,6 +78,8 @@ class Farmer:
 
         self.pool_public_keys = [G1Element.from_bytes(bytes.fromhex(pk)) for pk in self.config["pool_public_keys"]]
 
+        self.harvesters_summary: Dict[] = {}
+
         # This is the pool configuration, which should be moved out to the pool once it exists
         self.pool_target_encoded = pool_config["xch_target_address"]
         self.pool_target = decode_puzzle_hash(self.pool_target_encoded)
@@ -189,3 +191,37 @@ class Farmer:
                 )
             time_slept += 1
             await asyncio.sleep(1)
+
+    def update_harvesters_summary(self, info: farmer_protocol.FarmingInfo, harvester_id: str, harvester_host: string, harvester_port: int) -> None:
+        if harvester_id not in self.harvesters_summary:
+            self.harvesters_summary[harvester_id] = {
+                "total_plots": 0,
+                "harvester_host": '',
+                "harvester_port": 0,
+                "last_timestamp": 0,
+                "passed_filters": {},
+                "proofs": {},
+            }
+
+        # Get minute number of the day
+        timeFrame = int((info.timestamp % (60*60*24)) / 60)
+
+        summary = self.harvesters_summary[harvester_id]
+        summary["total_plots"] = info.total_plots
+        summary["harvester_host"] = harvester_host
+        summary["harvester_port"] = harvester_port
+        summary["last_timestamp"] = info.timestamp
+        if timeFrame in summary["passed_filters"]:
+            summary["passed_filters"][timeFrame] += info.passed
+        else:
+            summary["passed_filters"][timeFrame] = info.passed
+
+        if timeFrame in summary["proofs"]:
+            summary["proofs"][timeFrame] += info.proofs
+        else:
+            summary["proofs"][timeFrame] = info.proofs
+
+    def get_harvesters_summary(self) -> Dict:
+        # TODO: Verify that the information is not about "yesterday" minute before generating the summary
+        # TODO: Maybe we should expose here a set of already-processed data, like "proofs in the last 5 minutes", "proofs in the last hour", proofs in the last 24 hours"
+        return self.harvesters_summary
