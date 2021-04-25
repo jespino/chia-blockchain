@@ -19,6 +19,7 @@ from chia.consensus.block_rewards import calculate_pool_reward, calculate_base_f
 from tests.time_out_assert import time_out_assert
 from secrets import token_bytes
 from chia.wallet.util.transaction_type import TransactionType
+from chia.consensus.constants import ConsensusConstants
 
 
 @pytest.fixture(scope="module")
@@ -487,7 +488,7 @@ class TestDIDWallet:
             ]
         )
         try:
-            cost, result = puz.run_with_cost(fullsol)
+            cost, result = puz.run_with_cost(ConsensusConstants.MAX_BLOCK_COST_CLVM, fullsol)
         except Exception as e:
             assert e.args == ("path into atom",)
         else:
@@ -579,7 +580,7 @@ class TestDIDWallet:
 
         list_of_solutions = [CoinSolution(coin, full_puzzle, fullsol)]
         # sign for AGG_SIG_ME
-        message = bytes(coin.puzzle_hash) + bytes(coin.name())
+        message = coin.puzzle_hash + coin.name() + did_wallet.wallet_state_manager.constants.AGG_SIG_ME_ADDITIONAL_DATA
         pubkey = did_wallet_puzzles.get_pubkey_from_innerpuz(innerpuz)
         index = await did_wallet.wallet_state_manager.puzzle_store.index_for_pubkey(pubkey)
         private = master_sk_to_wallet_sk(did_wallet.wallet_state_manager.private_key, index)

@@ -60,14 +60,13 @@ class CoinStore:
         self.coin_record_cache = dict()
         return self
 
-    async def new_block(self, block: FullBlock):
+    async def new_block(self, block: FullBlock, additions: List[Coin], removals: List[bytes32]):
         """
         Only called for blocks which are blocks (and thus have rewards and transactions)
         """
         if block.is_transaction_block() is False:
             return
         assert block.foliage_transaction_block is not None
-        removals, additions = block.tx_removals_and_additions()
 
         for coin in additions:
             record: CoinRecord = CoinRecord(
@@ -79,9 +78,6 @@ class CoinStore:
                 block.foliage_transaction_block.timestamp,
             )
             await self._add_coin_record(record)
-
-        for coin_name in removals:
-            await self._set_spent(coin_name, block.height)
 
         included_reward_coins = block.get_included_reward_coins()
         if block.height == 0:
@@ -100,6 +96,9 @@ class CoinStore:
             )
             await self._add_coin_record(reward_coin_r)
 
+        for coin_name in removals:
+            await self._set_spent(coin_name, block.height)
+
     # Checks DB and DiffStores for CoinRecord with coin_name and returns it
     async def get_coin_record(self, coin_name: bytes32) -> Optional[CoinRecord]:
         if coin_name.hex() in self.coin_record_cache:
@@ -112,10 +111,8 @@ class CoinStore:
             return CoinRecord(coin, row[1], row[2], row[3], row[4], row[8])
         return None
 
-    async def get_tx_coins_added_at_height(self, height: uint32) -> List[CoinRecord]:
-        cursor = await self.coin_record_db.execute(
-            "SELECT * from coin_record WHERE confirmed_index=? and coinbase=0", (height,)
-        )
+    async def get_coins_added_at_height(self, height: uint32) -> List[CoinRecord]:
+        cursor = await self.coin_record_db.execute("SELECT * from coin_record WHERE confirmed_index=?", (height,))
         rows = await cursor.fetchall()
         await cursor.close()
         coins = []
@@ -218,7 +215,7 @@ class CoinStore:
     async def _set_spent(self, coin_name: bytes32, index: uint32):
         current: Optional[CoinRecord] = await self.get_coin_record(coin_name)
         if current is None:
-            return
+            raise ValueError(f"Cannot spend a coin that does not exist in db: {coin_name}")
         spent: CoinRecord = CoinRecord(
             current.coin,
             current.confirmed_block_index,

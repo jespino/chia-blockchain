@@ -5,7 +5,7 @@ import socket
 import time
 import traceback
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Set, Tuple, Union
+from typing import Callable, Dict, List, Optional, Set, Tuple, Union, Any
 
 from blspy import PrivateKey
 
@@ -549,11 +549,37 @@ class WalletNode:
             self.log.info("No peers to sync to")
             return
 
-        await self.wallet_state_manager.blockchain.lock.acquire()
-        try:
+        async with self.wallet_state_manager.blockchain.lock:
             fork_height = None
             if peak is not None:
                 fork_height = self.wallet_state_manager.sync_store.get_potential_fork_point(peak.header_hash)
+                our_peak_height = self.wallet_state_manager.blockchain.get_peak_height()
+                ses_heigths = self.wallet_state_manager.blockchain.get_ses_heights()
+                if len(ses_heigths) > 2 and our_peak_height is not None:
+                    ses_heigths.sort()
+                    max_fork_ses_height = ses_heigths[-3]
+                    # This is fork point in SES in case where fork was not detected
+                    if (
+                        self.wallet_state_manager.blockchain.get_peak_height() is not None
+                        and fork_height == max_fork_ses_height
+                    ):
+                        peers = self.server.get_full_node_connections()
+                        for peer in peers:
+                            # Grab a block at peak + 1 and check if fork point is actually our current height
+                            potential_height = uint32(our_peak_height + 1)
+                            block_response: Optional[Any] = await peer.request_header_blocks(
+                                wallet_protocol.RequestHeaderBlocks(potential_height, potential_height)
+                            )
+                            if block_response is not None and isinstance(
+                                block_response, wallet_protocol.RespondHeaderBlocks
+                            ):
+                                our_peak = self.wallet_state_manager.blockchain.get_peak()
+                                if (
+                                    our_peak is not None
+                                    and block_response.header_blocks[0].prev_header_hash == our_peak.header_hash
+                                ):
+                                    fork_height = our_peak_height
+                                break
             if fork_height is None:
                 fork_height = uint32(0)
             await self.wallet_state_manager.blockchain.warmup(fork_height)
@@ -586,8 +612,6 @@ class WalletNode:
                         peak.height - self.constants.BLOCKS_CACHE_SIZE,
                     )
                 )
-        finally:
-            self.wallet_state_manager.blockchain.lock.release()
 
     async def fetch_blocks_and_validate(
         self,
@@ -672,6 +696,8 @@ class WalletNode:
                 self.wallet_state_manager.state_changed("new_block")
             elif result == ReceiveBlockResult.INVALID_BLOCK:
                 raise ValueError("Value error peer sent us invalid block")
+        if advanced_peak:
+            await self.wallet_state_manager.create_more_puzzle_hashes()
         return True, advanced_peak
 
     def validate_additions(

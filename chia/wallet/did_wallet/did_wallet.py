@@ -49,8 +49,6 @@ class DIDWallet:
         num_of_backup_ids_needed: uint64 = None,
         name: str = None,
     ):
-        if amount & 1 == 0:
-            raise ValueError("DID amount must be odd number")
         self = DIDWallet()
         self.base_puzzle_program = None
         self.base_inner_puzzle_hash = None
@@ -59,7 +57,8 @@ class DIDWallet:
             self.log = logging.getLogger(name)
         else:
             self.log = logging.getLogger(__name__)
-
+        if amount & 1 == 0:
+            raise ValueError("DID amount must be odd number")
         self.wallet_state_manager = wallet_state_manager
         if num_of_backup_ids_needed is None:
             num_of_backup_ids_needed = uint64(len(backups_ids))
@@ -350,6 +349,7 @@ class DIDWallet:
                 None,
             )
             await self.save_info(did_info, False)
+            await self.wallet_state_manager.update_wallet_puzzle_hashes(self.wallet_info.id)
             full_puz = did_wallet_puzzles.create_fullpuz(innerpuz, genesis_id)
             full_puzzle_hash = full_puz.get_tree_hash()
             (
@@ -406,7 +406,6 @@ class DIDWallet:
                         )
                         await self.save_info(did_info, False)
 
-            await self.wallet_state_manager.update_wallet_puzzle_hashes(self.wallet_info.id)
             return
         except Exception as e:
             raise e
@@ -459,7 +458,7 @@ class DIDWallet:
         )
         list_of_solutions = [CoinSolution(coin, full_puzzle, fullsol)]
         # sign for AGG_SIG_ME
-        message = bytes(puzhash) + bytes(coin.name())
+        message = puzhash + coin.name() + self.wallet_state_manager.constants.AGG_SIG_ME_ADDITIONAL_DATA
         pubkey = did_wallet_puzzles.get_pubkey_from_innerpuz(innerpuz)
         index = await self.wallet_state_manager.puzzle_store.index_for_pubkey(pubkey)
         private = master_sk_to_wallet_sk(self.wallet_state_manager.private_key, index)
@@ -527,7 +526,7 @@ class DIDWallet:
 
         message_spend_bundle = SpendBundle([message_spend], AugSchemeMPL.aggregate([]))
         # sign for AGG_SIG_ME
-        message = bytes(innermessage) + bytes(coin.name())
+        message = innermessage + coin.name() + self.wallet_state_manager.constants.AGG_SIG_ME_ADDITIONAL_DATA
         pubkey = did_wallet_puzzles.get_pubkey_from_innerpuz(innerpuz)
         index = await self.wallet_state_manager.puzzle_store.index_for_pubkey(pubkey)
         private = master_sk_to_wallet_sk(self.wallet_state_manager.private_key, index)
@@ -792,7 +791,7 @@ class DIDWallet:
         fullsol = Program.to([coin.parent_coin_info, coin.amount, innersol])
         list_of_solutions = [CoinSolution(coin, full_puzzle, fullsol)]
         # sign for AGG_SIG_ME
-        message = bytes(coin.puzzle_hash) + bytes(coin.name())
+        message = coin.puzzle_hash + coin.name() + self.wallet_state_manager.constants.AGG_SIG_ME_ADDITIONAL_DATA
         pubkey = did_wallet_puzzles.get_pubkey_from_innerpuz(innerpuz)
         index = await self.wallet_state_manager.puzzle_store.index_for_pubkey(pubkey)
         private = master_sk_to_wallet_sk(self.wallet_state_manager.private_key, index)

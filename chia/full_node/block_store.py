@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from typing import Dict, List, Optional, Tuple
 
@@ -8,7 +7,6 @@ from chia.consensus.block_record import BlockRecord
 from chia.types.blockchain_format.sized_bytes import bytes32
 from chia.types.blockchain_format.sub_epoch_summary import SubEpochSummary
 from chia.types.full_block import FullBlock
-from chia.types.header_block import HeaderBlock
 from chia.types.weight_proof import SubEpochChallengeSegment, SubEpochSegments
 from chia.util.db_wrapper import DBWrapper
 from chia.util.ints import uint32
@@ -44,11 +42,11 @@ class BlockStore:
         )
 
         # todo remove in v1.2
-        await self.db.execute("DROP TABLE IF EXISTS sub_epoch_segments")
+        await self.db.execute("DROP TABLE IF EXISTS sub_epoch_segments_v2")
 
         # Sub epoch segments for weight proofs
         await self.db.execute(
-            "CREATE TABLE IF NOT EXISTS sub_epoch_segments_v2(ses_height bigint PRIMARY KEY, challenge_segments blob)"
+            "CREATE TABLE IF NOT EXISTS sub_epoch_segments_v3(ses_block_hash text PRIMARY KEY, challenge_segments blob)"
         )
 
         # Height index so we can look up in order of height for sync purposes
@@ -102,32 +100,28 @@ class BlockStore:
         await cursor_2.close()
 
     async def persist_sub_epoch_challenge_segments(
-        self, sub_epoch_summary_height: uint32, segments: List[SubEpochChallengeSegment]
+        self, ses_block_hash: bytes32, segments: List[SubEpochChallengeSegment]
     ) -> None:
         async with self.db_wrapper.lock:
             cursor_1 = await self.db.execute(
-                "INSERT OR REPLACE INTO sub_epoch_segments_v2 VALUES(?, ?)",
-                (sub_epoch_summary_height, bytes(SubEpochSegments(segments))),
+                "INSERT OR REPLACE INTO sub_epoch_segments_v3 VALUES(?, ?)",
+                (ses_block_hash.hex(), bytes(SubEpochSegments(segments))),
             )
             await cursor_1.close()
             await self.db.commit()
 
     async def get_sub_epoch_challenge_segments(
         self,
-        sub_epoch_summary_height: uint32,
+        ses_block_hash: bytes32,
     ) -> Optional[List[SubEpochChallengeSegment]]:
         cursor = await self.db.execute(
-            "SELECT challenge_segments from sub_epoch_segments_v2 WHERE ses_height=?", (sub_epoch_summary_height,)
+            "SELECT challenge_segments from sub_epoch_segments_v3 WHERE ses_block_hash=?", (ses_block_hash.hex(),)
         )
         row = await cursor.fetchone()
         await cursor.close()
         if row is not None:
             return SubEpochSegments.from_bytes(row[0]).challenge_segments
         return None
-
-    async def delete_sub_epoch_challenge_segments(self, fork_height: uint32) -> None:
-        cursor = await self.db.execute("delete from sub_epoch_segments_v2 WHERE ses_height>?", (fork_height,))
-        await cursor.close()
 
     async def get_full_block(self, header_hash: bytes32) -> Optional[FullBlock]:
         cached = self.block_cache.get(header_hash)
@@ -153,17 +147,29 @@ class BlockStore:
         await cursor.close()
         return [FullBlock.from_bytes(row[0]) for row in rows]
 
-    async def get_block_records_at(self, heights: List[uint32]) -> List[BlockRecord]:
-        if len(heights) == 0:
+    async def get_block_records_by_hash(self, header_hashes: List[bytes32]):
+        """
+        Returns a list of Block Records, ordered by the same order in which header_hashes are passed in.
+        Throws an exception if the blocks are not present
+        """
+        if len(header_hashes) == 0:
             return []
-        heights_db = tuple(heights)
-        formatted_str = (
-            f'SELECT block from block_records WHERE height in ({"?," * (len(heights_db) - 1)}?) ORDER BY height ASC;'
-        )
-        cursor = await self.db.execute(formatted_str, heights_db)
+
+        header_hashes_db = tuple([hh.hex() for hh in header_hashes])
+        formatted_str = f'SELECT block from block_records WHERE header_hash in ({"?," * (len(header_hashes_db) - 1)}?)'
+        cursor = await self.db.execute(formatted_str, header_hashes_db)
         rows = await cursor.fetchall()
         await cursor.close()
-        return [BlockRecord.from_bytes(row[0]) for row in rows]
+        all_blocks: Dict[bytes32, BlockRecord] = {}
+        for row in rows:
+            block_rec: BlockRecord = BlockRecord.from_bytes(row[0])
+            all_blocks[block_rec.header_hash] = block_rec
+        ret: List[BlockRecord] = []
+        for hh in header_hashes:
+            if hh not in all_blocks:
+                raise ValueError(f"Header hash {hh} not in the blockchain")
+            ret.append(all_blocks[hh])
+        return ret
 
     async def get_blocks_by_hash(self, header_hashes: List[bytes32]) -> List[FullBlock]:
         """
@@ -188,27 +194,6 @@ class BlockStore:
             if hh not in all_blocks:
                 raise ValueError(f"Header hash {hh} not in the blockchain")
             ret.append(all_blocks[hh])
-        return ret
-
-    async def get_header_blocks_in_range(
-        self,
-        start: int,
-        stop: int,
-    ) -> Dict[bytes32, HeaderBlock]:
-
-        formatted_str = f"SELECT header_hash,block from full_blocks WHERE height >= {start} and height <= {stop}"
-
-        cursor = await self.db.execute(formatted_str)
-        rows = await cursor.fetchall()
-        await cursor.close()
-        ret: Dict[bytes32, HeaderBlock] = {}
-        for row in rows:
-            # Ugly hack, until full_block.get_block_header is rewritten as part of generator runner change
-            await asyncio.sleep(0.001)
-            header_hash = bytes.fromhex(row[0])
-            full_block: FullBlock = FullBlock.from_bytes(row[1])
-            ret[header_hash] = full_block.get_block_header()
-
         return ret
 
     async def get_block_record(self, header_hash: bytes32) -> Optional[BlockRecord]:
