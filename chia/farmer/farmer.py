@@ -78,7 +78,7 @@ class Farmer:
 
         self.pool_public_keys = [G1Element.from_bytes(bytes.fromhex(pk)) for pk in self.config["pool_public_keys"]]
 
-        self.harvesters_summary: Dict[] = {}
+        self.harvesters_summary: Dict = {}
 
         # This is the pool configuration, which should be moved out to the pool once it exists
         self.pool_target_encoded = pool_config["xch_target_address"]
@@ -192,36 +192,62 @@ class Farmer:
             time_slept += 1
             await asyncio.sleep(1)
 
-    def update_harvesters_summary(self, info: farmer_protocol.FarmingInfo, harvester_id: str, harvester_host: string, harvester_port: int) -> None:
+    def update_harvesters_summary(
+        self, info: farmer_protocol.FarmingInfo, harvester_id: str, harvester_host: str, harvester_port: int
+    ) -> None:
         if harvester_id not in self.harvesters_summary:
             self.harvesters_summary[harvester_id] = {
                 "total_plots": 0,
-                "harvester_host": '',
-                "harvester_port": 0,
+                "host": "",
+                "port": 0,
                 "last_timestamp": 0,
                 "passed_filters": {},
                 "proofs": {},
             }
 
         # Get minute number of the day
-        timeFrame = int((info.timestamp % (60*60*24)) / 60)
+        time_frame = int((info.timestamp % (60 * 60 * 24)) / 60)
 
         summary = self.harvesters_summary[harvester_id]
         summary["total_plots"] = info.total_plots
-        summary["harvester_host"] = harvester_host
-        summary["harvester_port"] = harvester_port
+        summary["host"] = harvester_host
+        summary["port"] = harvester_port
         summary["last_timestamp"] = info.timestamp
-        if timeFrame in summary["passed_filters"]:
-            summary["passed_filters"][timeFrame] += info.passed
+        if time_frame in summary["passed_filters"]:
+            summary["passed_filters"][time_frame] += info.passed
         else:
-            summary["passed_filters"][timeFrame] = info.passed
+            summary["passed_filters"][time_frame] = info.passed
 
-        if timeFrame in summary["proofs"]:
-            summary["proofs"][timeFrame] += info.proofs
+        if time_frame in summary["proofs"]:
+            summary["proofs"][time_frame] += info.proofs
         else:
-            summary["proofs"][timeFrame] = info.proofs
+            summary["proofs"][time_frame] = info.proofs
+
+    def get_last_x_time_frames(values: Dict[int, int], latest_time_frame: int, num_of_frames: int) -> List[int]:
+        values: List[int] = []
+        for key, value in values.items():
+            if latest_time_frame > num_of_frames:
+                if key < latest_time_frame and key > (latest_time_frame - num_of_frames):
+                    values.append(value)
+            elif latest_time_frame < num_of_frames:
+                if key < latest_time_frame and key > ((60 * 60 * 24) + (latest_time_frame - num_of_frames)):
+                    values.append(value)
+        return values
 
     def get_harvesters_summary(self) -> Dict:
-        # TODO: Verify that the information is not about "yesterday" minute before generating the summary
-        # TODO: Maybe we should expose here a set of already-processed data, like "proofs in the last 5 minutes", "proofs in the last hour", proofs in the last 24 hours"
-        return self.harvesters_summary
+        summary = {}
+        for harvester_id, harvester_data in self.harvesters_summary.items():
+            latest_time_frame = int((info.timestamp % (60 * 60 * 24)) / 60)
+            summary[harvester_id] = {
+                "total_plots": harvester_data["total_plots"],
+                "host": harvester_data["harvester_host"],
+                "port": harvester_data["harvester_port"],
+                "lastDayPassedFilters": sum(harvester_data["passed_filters"].values()),
+                "lastDayProofs": sum(harvester_data["proofs"].values()),
+                "lastHourPassedFilters": sum(this.get_last_x_time_frames(harvester_data["passed_filters"], last_time_frame, 60)),
+                "lastHourProofs": sum(this.get_last_x_time_frames(harvester_data["proofs"], last_time_frame, 60)),
+                "last5MinutesPassedFilters": sum(this.get_last_x_time_frames(harvester_data["passed_filters"], last_time_frame, 5)),
+                "last5MinutesProofs": sum(this.get_last_x_time_frames(harvester_data["proofs"], last_time_frame, 5)),
+            }
+
+        return summary

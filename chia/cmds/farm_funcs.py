@@ -122,16 +122,15 @@ async def get_wallets_stats(wallet_rpc_port: int) -> Optional[Dict[str, Any]]:
     return amounts
 
 
-async def is_farmer_running(farmer_rpc_port: int) -> bool:
-    is_running = False
+async def get_farmer_summary(farmer_rpc_port: int) -> Optional[Dict]:
+    summary = None
     try:
         config = load_config(DEFAULT_ROOT_PATH, "config.yaml")
         self_hostname = config["self_hostname"]
         if farmer_rpc_port is None:
             farmer_rpc_port = config["farmer"]["rpc_port"]
         farmer_client = await FarmerRpcClient.create(self_hostname, uint16(farmer_rpc_port), DEFAULT_ROOT_PATH, config)
-        await farmer_client.get_connections()
-        is_running = True
+        summary = await farmer_client.get_harvesters_summary()
     except Exception as e:
         if isinstance(e, aiohttp.client_exceptions.ClientConnectorError):
             print(f"Connection error. Check if farmer is running at {farmer_rpc_port}")
@@ -140,7 +139,7 @@ async def is_farmer_running(farmer_rpc_port: int) -> bool:
 
     farmer_client.close()
     await farmer_client.await_closed()
-    return is_running
+    return summary
 
 
 async def get_challenges(farmer_rpc_port: int) -> Optional[List[Dict[str, Any]]]:
@@ -185,7 +184,7 @@ async def summary(rpc_port: int, wallet_rpc_port: int, harvester_rpc_port: int, 
     amounts = await get_wallets_stats(wallet_rpc_port)
     plots = await get_plots(harvester_rpc_port)
     blockchain_state = await get_blockchain_state(rpc_port)
-    farmer_running = await is_farmer_running(farmer_rpc_port)
+    farmer_summary = await get_farmer_summary(farmer_rpc_port)
 
     print("Farming status: ", end="")
     if blockchain_state is None:
@@ -194,10 +193,12 @@ async def summary(rpc_port: int, wallet_rpc_port: int, harvester_rpc_port: int, 
         print("Syncing")
     elif not blockchain_state["sync"]["synced"]:
         print("Not synced or not connected to peers")
-    elif not farmer_running:
+    elif farmer_summary is None or not farmer_summary["Success"]:
         print("Not running")
     else:
         print("Farming")
+
+    print(farmer_summary)
 
     if amounts is not None:
         print(f"Total chia farmed: {amounts['farmed_amount'] / units['chia']}")

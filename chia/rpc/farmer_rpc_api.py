@@ -95,5 +95,5 @@ class FarmerRpcApi:
         self.service.set_reward_targets(farmer_target, pool_target)
         return {}
 
-    async def get_harvesters_summary(self) -> Dict:
+    async def get_harvesters_summary(self, request: Dict) -> Dict:
         return self.service.get_harvesters_summary()
